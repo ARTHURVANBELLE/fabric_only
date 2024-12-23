@@ -115,7 +115,7 @@ impl InstanceApp {
         let grid_rows: u32 = 2; // 2x2 grid
         let grid_cols: u32 = 2;
 
-        let fabric_indices = vec![
+/*        let fabric_indices = vec![
             0, 1, 2,  // First triangle
             2, 3, 0,  // Second triangle
         ];
@@ -126,13 +126,13 @@ impl InstanceApp {
             Vertex { position: [4.0, 4.0, 0.0, 1.0], color: [0.0, 0.0, 1.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
             Vertex { position: [0.0, 4.0, 0.0, 1.0], color: [1.0, 1.0, 0.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
         ];
-
+*/
         // Generate fabric vertices
-        let fabric_vertices_1: Vec<Vertex> = (0..grid_rows)
+        let fabric_vertices: Vec<Vertex> = (0..grid_rows)
             .flat_map(|row| {
                 (0..grid_cols).map(move |col| {
                     let x = (col as f32 / (grid_cols - 1) as f32) * fabric_side_length - fabric_side_length / 2.0;
-                    let y = 0.0;
+                    let y = 2.0;
                     let z = (row as f32 / (grid_rows - 1) as f32) * fabric_side_length - fabric_side_length / 2.0;
 
                     Vertex {
@@ -140,14 +140,14 @@ impl InstanceApp {
                         color: [0.0, 1.0, 0.0, 1.0], // Green for the fabric
                         mass: 1.0,
                         velocity: [0.0, 0.0, 0.0, 1.0],
-                        fixed: if row == 0 { 1.0 } else { 0.0 }, // Top row is fixed
+                        fixed: 0.0,
                     }
                 })
             })
             .collect();
 
-        // Generate fabric indices (two triangles per grid cell)
-        let mut fabric_indices_1: Vec<u32> = Vec::new();
+         // Generate fabric indices (two triangles per grid cell)
+        let mut fabric_indices: Vec<u32> = Vec::new();
         for row in 0..grid_rows - 1 {
             for col in 0..grid_cols - 1 {
                 let top_left = row * grid_cols + col;
@@ -156,14 +156,12 @@ impl InstanceApp {
                 let bottom_right = bottom_left + 1;
 
                 // Add two triangles for the cell
-                fabric_indices_1.extend_from_slice(&[
+                fabric_indices.extend_from_slice(&[
                     top_left, bottom_left, bottom_right, // Triangle 1
                     top_left, bottom_right, top_right,  // Triangle 2
                 ]);
             }
         }
-
-
 
         println!("Fabric vertices: {}", fabric_vertices.len());
         println!("Fabric indices: {}", fabric_indices.len());
@@ -459,29 +457,25 @@ impl App for InstanceApp {
     }
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
-        // Set the render pipeline
-        render_pass.set_pipeline(&self.render_pipeline);
-    
-        // Set the camera bind group
-        render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
-    
         // Draw the sphere
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
         render_pass.set_vertex_buffer(0, self.sphere_vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.sphere_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.num_sphere_indices, 0, 0..1);
     
-        // Draw the fabric (the square)
+        // Draw the fabric
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, self.camera.bind_group(), &[]);
-    
-        // Set the vertex buffer for the fabric
         render_pass.set_vertex_buffer(0, self.fabric_vertex_buffer.slice(..));
-    
-        // Set the index buffer for the fabric (for the square)
         render_pass.set_index_buffer(self.fabric_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-    
-        // Draw the fabric (square), using 6 indices (2 triangles for the square)
-        render_pass.draw_indexed(0..6, 0, 0..1);  // 6 indices for 2 triangles
+        
+        // Calculate total indices for grid
+        let indices_per_cell = 6; // 2 triangles * 3 vertices
+        let cells = (self.sim_params.grid_rows - 1) * (self.sim_params.grid_cols - 1);
+        let total_indices = indices_per_cell * cells;
+        
+        render_pass.draw_indexed(0..total_indices, 0, 0..1);
     }
     
 
