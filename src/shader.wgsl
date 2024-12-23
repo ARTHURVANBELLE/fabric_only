@@ -10,7 +10,7 @@ struct VertexInput {
     @location(1) color: vec4<f32>,
     @location(2) mass: f32,
     @location(3) velocity: vec4<f32>,
-    @location(4) is_ball: f32,
+    @location(4) fixed: f32,
 };
 
 struct VertexOutput {
