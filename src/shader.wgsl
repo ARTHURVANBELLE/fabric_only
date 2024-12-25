@@ -21,7 +21,13 @@ struct VertexOutput {
 @vertex
 fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-
+/*
+    if (model.fixed == 1.0) {
+        out.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    } else {
+        out.color = vec4<f32>(0.0, 0.0, 1.0, 1.0);
+    }
+*/
     out.color = model.color;
     out.clip_position = camera.proj * camera.view * model.position;
     return out;

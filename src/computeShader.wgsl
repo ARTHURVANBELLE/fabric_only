@@ -17,30 +17,23 @@ struct SimParams {
 @group(0) @binding(1) var<uniform> sphere_data: vec4<f32>;
 @group(0) @binding(2) var<uniform> sim_params: SimParams;
 
-@compute @workgroup_size(64)
+@compute @workgroup_size(256)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let idx = global_id.x; // Each thread corresponds to one vertex
+    let idx: u32 = global_id.x;
 
-    // Ensure we do not go out of bounds
-    let total_vertices = sim_params.grid_cols * sim_params.grid_rows;
-    if (idx >= total_vertices) {
+    // Ensure we don't access out-of-bounds elements
+    if (idx >= arrayLength(&fabric)) {
         return;
     }
 
-    // Access the vertex from the fabric array
-    var vertex = fabric[idx];
-    //vertex.color = vec4<f32>(0.0, 0.0, 1.0, 1.0);
+    // Retrieve the current vertex
+    var vertex: Vertex = fabric[idx];
 
-    // Example simulation logic (update vertex properties)
-    if (vertex.fixed >= -1.0) {
-        let dt = 0.016;
-        let gravity = -0.81;
-        vertex.velocity.y += gravity * dt;
-        vertex.position.y += vertex.velocity.y * dt;
-        vertex.velocity *= 0.99;
-        //vertex.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
-    }
+    vertex.position.y += 5.1;
 
-    // Update the vertex back in the fabric array
+    // Modify only the color field of the vertex (example: setting to red)
+    vertex.color = vec4<f32>(1.0, 0.0, 0.0, 1.0); // RGBA (red)
+
+    // Write the updated vertex back to the fabric array
     fabric[idx] = vertex;
 }

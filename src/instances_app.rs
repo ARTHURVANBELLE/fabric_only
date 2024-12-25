@@ -112,8 +112,8 @@ impl InstanceApp {
 
         // Fabric properties
         let fabric_side_length = 4.0;
-        let grid_rows: u32 = 2; // 2x2 grid
-        let grid_cols: u32 = 2;
+        let grid_rows: u32 = 160; 
+        let grid_cols: u32 = 160;
 /*
         let fabric_indices = vec![
             0, 1, 2,  // First triangle
@@ -240,6 +240,9 @@ impl InstanceApp {
             contents: bytemuck::cast_slice(&ball_indices),
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::STORAGE| wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
         });
+
+
+        println!("Buffer size: {}", std::mem::size_of::<Vertex>() * fabric_vertices.len());
 
         // Shaders and pipeline
         let shader = context.device().create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -430,23 +433,21 @@ impl App for InstanceApp {
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
     
-            let total_threads = self.sim_params.grid_cols * self.sim_params.grid_rows;
-            let workgroup_size = 64;
-            let workgroup_count = (total_threads + workgroup_size - 1) / workgroup_size;
+            // Calculate the total number of threads to dispatch
+            let total_threads = (self.sim_params.grid_rows * self.sim_params.grid_cols) as u32;
     
-            compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
+            // Assuming a thread group size of 256, adjust based on your compute shader
+            let thread_group_size = 256;
+            let thread_group_count = (total_threads + thread_group_size - 1) / thread_group_size;
+    
+            // Dispatch compute shader
+            compute_pass.dispatch_workgroups(thread_group_count, 1, 1);
         }
     
-        encoder.copy_buffer_to_buffer(
-            &self.fabric_storage_buffer,
-            0,
-            &self.fabric_vertex_buffer,
-            0,
-            (self.sim_params.grid_rows * self.sim_params.grid_cols * std::mem::size_of::<Vertex>() as u32) as u64,
-        );
-    
+        // Submit the commands
         context.queue().submit(Some(encoder.finish()));
     }
+    
     
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
