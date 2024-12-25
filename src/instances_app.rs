@@ -28,8 +28,8 @@ struct SimParams {
     grid_cols: u32,
     spring_stiffness: f32,
     rest_length: f32,
-    center: [f32; 4],  // 16 bytes
-    radius: f32,       // 4 bytes
+    center: [f32; 4],
+    radius: f32,       
     _padding: [f32; 3], // 12 bytes padding
 }
 
@@ -137,7 +137,6 @@ impl InstanceApp {
         println!("Fabric vertices: {}", fabric_vertices.len());
         println!("Fabric indices: {}", fabric_indices.len());
 
-
         let ball_radius = 1.2; // Adjust the ball radius as needed
         let (ball_positions, ball_indices) = icosphere(2);
         let ball_vertices: Vec<Vertex> = ball_positions
@@ -159,9 +158,6 @@ impl InstanceApp {
 
         let mut indices = Vec::new();
         indices.extend(ball_indices.clone()); // Clone to avoid move
-
-        //println!("Total vertices: {}", vertices.len());
-        //println!("Total indices: {}", indices.len());
 
         let sim_params = SimParams {
             grid_rows: grid_rows,
@@ -201,7 +197,6 @@ impl InstanceApp {
             contents: bytemuck::cast_slice(&ball_indices),
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::STORAGE| wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
         });
-
 
         println!("Buffer size: {}", std::mem::size_of::<Vertex>() * fabric_vertices.len());
 
@@ -252,7 +247,6 @@ impl InstanceApp {
                 },
             ],
         });
-        
 
         let compute_bind_group = context.device().create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
@@ -335,7 +329,8 @@ impl InstanceApp {
 
         // Camera setup
         let aspect = context.size().x / context.size().y;
-        let camera = OrbitCamera::new(context, 45.0, aspect, 0.1, 100.0);
+        let mut camera = OrbitCamera::new(context, 45.0, aspect, 0.5, 100.0);
+        camera.set_radius(7.0).update(context);
 
         let num_sphere_indices = ball_indices.len() as u32;
 
@@ -359,7 +354,7 @@ impl App for InstanceApp {
     fn input(&mut self, input: egui::InputState, context: &Context) {
         self.camera.input(input.clone(), context);
         if input.raw_scroll_delta.y != 0.0 {
-            let new_radius = (self.camera.radius() - input.raw_scroll_delta.y / 10.0).max(3.0).min(500.0);
+            let new_radius = (self.camera.radius() - input.raw_scroll_delta.y / 10.0).max(5.0).min(500.0);
             self.camera.set_radius(new_radius).update(context);
         }
     }
@@ -373,7 +368,6 @@ impl App for InstanceApp {
         let thread_group_size = 256u32;
         let thread_group_count = (total_vertices + thread_group_size - 1) / thread_group_size;
         
-    
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Compute Pass"),
@@ -384,11 +378,9 @@ impl App for InstanceApp {
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
             compute_pass.dispatch_workgroups(thread_group_count, 1, 1);
         }
-    
         context.queue().submit(Some(encoder.finish()));
     }
     
-
     fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         // Draw the sphere
         render_pass.set_pipeline(&self.render_pipeline);
@@ -410,6 +402,4 @@ impl App for InstanceApp {
         
         render_pass.draw_indexed(0..total_indices, 0, 0..1);
     }
-    
-
 }

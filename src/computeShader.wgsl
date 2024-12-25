@@ -37,7 +37,23 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
             if (vertex.position.y < -2.0) {
                 vertex.position.y = -2.0;
-                vertex.velocity.y = -vertex.velocity.y;
+                vertex.velocity.y = 0.0;
+            }
+
+            // Sphere collision
+            let sphere_center = params.sphere_center.xyz;
+            let sphere_radius = params.sphere_radius;
+            let dist = distance(vertex.position.xyz, sphere_center);
+            if (dist < sphere_radius) {
+                let normal = normalize(vertex.position.xyz - sphere_center);
+                vertex.position.x = sphere_center.x + normal.x * sphere_radius;
+                vertex.position.y = sphere_center.y + normal.y * sphere_radius;
+                vertex.position.z = sphere_center.z + normal.z * sphere_radius;
+                /*
+                vertex.velocity.x = - vertex.velocity.x ;
+                vertex.velocity.y = - vertex.velocity.y;
+                vertex.velocity.z = - vertex.velocity.z;
+                */
             }
         }
     
