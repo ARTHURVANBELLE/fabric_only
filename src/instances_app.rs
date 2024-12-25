@@ -11,19 +11,13 @@ use wgpu_bootstrap::{
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    position: [f32; 4], // Changed to vec4
-    color: [f32; 4],
-    mass: f32,
-    velocity: [f32; 4], // Changed to vec4
-    fixed: f32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct SphereData {
-    center: [f32; 4],  // 16 bytes
-    radius: f32,       // 4 bytes
-    _padding: [f32; 7],  // 28 bytes of padding to make it 32-byte aligned
+    position: [f32; 4],    // 16 bytes (0-15)
+    color: [f32; 4],       // 16 bytes (16-31)
+    mass: f32,             // 4 bytes  (32-35)
+    padding1: [f32; 3],    // 12 bytes padding to align velocity
+    velocity: [f32; 4],    // 16 bytes (48-63)
+    fixed: f32,            // 4 bytes  (64-67)
+    padding2: [f32; 3],    // 12 bytes final padding
 }
 
 // Simulation parameters
@@ -34,16 +28,9 @@ struct SimParams {
     grid_cols: u32,
     spring_stiffness: f32,
     rest_length: f32,
-}
-
-impl SphereData {
-    fn new(center: [f32; 3], radius: f32) -> Self {
-        Self {
-            center: [center[0], center[1], center[2], 0.0],
-            radius,
-            _padding: [0.0; 7],
-        }
-    }
+    center: [f32; 4],  // 16 bytes
+    radius: f32,       // 4 bytes
+    _padding: [f32; 3], // 12 bytes padding
 }
 
 impl Vertex {
@@ -52,37 +39,33 @@ impl Vertex {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
-                // Location 0: Position
+                // Position
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
                     format: wgpu::VertexFormat::Float32x4,
                 },
-                // Location 1: Color
+                // Color
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    offset: 16,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x4,
                 },
-                // Location 2: Mass
+                // Mass
                 wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 4]>()
-                        + std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                    offset: 32,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32,
                 },
-                // Location 3: Velocity
+                // Velocity
                 wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 4]>() * 2
-                        + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
+                    offset: 48,
                     shader_location: 3,
                     format: wgpu::VertexFormat::Float32x4,
                 },
-                // Location 4: fixed
+                // Fixed
                 wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 4]>() * 2
-                        + std::mem::size_of::<[f32; 4]>()
-                        + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
+                    offset: 64,
                     shader_location: 4,
                     format: wgpu::VertexFormat::Float32,
                 },
@@ -99,9 +82,7 @@ pub struct InstanceApp {
     num_sphere_indices: u32,
     camera: OrbitCamera,
     compute_bind_group: wgpu::BindGroup,
-    sphere_buffer: wgpu::Buffer,
     sim_param_buffer: wgpu::Buffer,
-    fabric_storage_buffer: wgpu::Buffer,
     fabric_vertex_buffer: wgpu::Buffer,
     fabric_index_buffer: wgpu::Buffer,
     sim_params: SimParams,
@@ -114,19 +95,7 @@ impl InstanceApp {
         let fabric_side_length = 4.0;
         let grid_rows: u32 = 160; 
         let grid_cols: u32 = 160;
-/*
-        let fabric_indices = vec![
-            0, 1, 2,  // First triangle
-            2, 3, 0,  // Second triangle
-        ];
 
-        let fabric_vertices = vec![
-            Vertex { position: [0.0, 0.0, 0.0, 1.0], color: [1.0, 0.0, 0.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
-            Vertex { position: [4.0, 0.0, 0.0, 1.0], color: [0.0, 1.0, 0.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
-            Vertex { position: [4.0, 4.0, 0.0, 1.0], color: [0.0, 0.0, 1.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
-            Vertex { position: [0.0, 4.0, 0.0, 1.0], color: [1.0, 1.0, 0.0, 1.0], mass: 1.0, velocity: [0.0, 0.0, 0.0, 1.0], fixed: 1.0 },
-        ];
-*/
         // Generate fabric vertices
         let fabric_vertices: Vec<Vertex> = (0..grid_rows)
             .flat_map(|row| {
@@ -139,8 +108,10 @@ impl InstanceApp {
                         position: [x, y, z, 1.0],
                         color: [0.0, 1.0, 0.0, 1.0], // Green for the fabric
                         mass: 1.0,
+                        padding1: [0.0; 3],
                         velocity: [0.0, 0.0, 0.0, 1.0],
                         fixed: 0.0,
+                        padding2: [0.0; 3],
                     }
                 })
             })
@@ -175,8 +146,10 @@ impl InstanceApp {
                 position: [position.x * ball_radius, position.y * ball_radius, position.z * ball_radius, 1.0],
                 color: [1.0, 0.0, 0.0, 1.0], // Red for the ball
                 mass: 1.0,
+                padding1: [0.0; 3],
                 velocity: [0.0, 0.0, 0.0, 1.0],
                 fixed: 1.0,
+                padding2: [0.0; 3],
             })
             .collect();
 
@@ -187,27 +160,23 @@ impl InstanceApp {
         let mut indices = Vec::new();
         indices.extend(ball_indices.clone()); // Clone to avoid move
 
-        println!("Total vertices: {}", vertices.len());
-        println!("Total indices: {}", indices.len());
+        //println!("Total vertices: {}", vertices.len());
+        //println!("Total indices: {}", indices.len());
 
         let sim_params = SimParams {
             grid_rows: grid_rows,
             grid_cols: grid_cols,
             spring_stiffness: 50.0,
             rest_length: 0.1,
+            center: [0.0, 0.0, 0.0, 1.0],
+            radius: ball_radius,
+            _padding: [0.0; 3],
         };
-        let sim_param_buffer = context.device().create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Sim Param Buffer"),
-                contents: bytemuck::cast_slice(&[sim_params]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        let sim_param_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sim Param Buffer"),
+            contents: bytemuck::cast_slice(&[sim_params]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
-        
-        let fabric_storage_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Fabric Storage Buffer"),
-            contents: bytemuck::cast_slice(&fabric_vertices),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        });
 
         let fabric_vertex_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Fabric Vertex Buffer"),
@@ -218,15 +187,7 @@ impl InstanceApp {
         let fabric_index_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Fabric Index Buffer"),
             contents: bytemuck::cast_slice(&fabric_indices),
-            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let sphere_data = SphereData::new([0.0, 0.0, 0.0], ball_radius); // Use your ball_radius
-        let sphere_buffer = context.device().create_buffer_init(
-        &wgpu::util::BufferInitDescriptor {
-            label: Some("Sphere Buffer"),
-            contents: bytemuck::cast_slice(&[sphere_data]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
         });
 
         let sphere_vertex_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -289,16 +250,6 @@ impl InstanceApp {
                     },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
             ],
         });
         
@@ -309,14 +260,10 @@ impl InstanceApp {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: fabric_storage_buffer.as_entire_binding(),
+                    resource: fabric_vertex_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: sphere_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: sim_param_buffer.as_entire_binding(),
                 },
             ],
@@ -400,9 +347,7 @@ impl InstanceApp {
             num_sphere_indices,
             camera,
             compute_bind_group,
-            sphere_buffer,
             sim_param_buffer,
-            fabric_storage_buffer,
             fabric_vertex_buffer,
             fabric_index_buffer,
             sim_params,
@@ -424,6 +369,20 @@ impl App for InstanceApp {
             label: Some("Compute Encoder"),
         });
     
+        let total_vertices = self.sim_params.grid_rows * self.sim_params.grid_cols;
+        let thread_group_size = 256u32;
+        let thread_group_count = (total_vertices + thread_group_size - 1) / thread_group_size;
+        
+        println!("Total vertices: {}", total_vertices);
+        println!("Thread group size: {}", thread_group_size);
+        println!("Thread group count: {}", thread_group_count);
+        println!("Vertex size: {}", std::mem::size_of::<Vertex>());
+        println!("Position offset: {}",std:: mem::offset_of!(Vertex, position));
+        println!("Color offset: {}", std:: mem::offset_of!(Vertex, color));
+        println!("Mass offset: {}", std:: mem::offset_of!(Vertex, mass));
+        println!("Velocity offset: {}", std:: mem::offset_of!(Vertex, velocity));
+        println!("Fixed offset: {}", std:: mem::offset_of!(Vertex, fixed));
+    
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Compute Pass"),
@@ -432,22 +391,11 @@ impl App for InstanceApp {
     
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-    
-            // Calculate the total number of threads to dispatch
-            let total_threads = (self.sim_params.grid_rows * self.sim_params.grid_cols) as u32;
-    
-            // Assuming a thread group size of 256, adjust based on your compute shader
-            let thread_group_size = 256;
-            let thread_group_count = (total_threads + thread_group_size - 1) / thread_group_size;
-    
-            // Dispatch compute shader
             compute_pass.dispatch_workgroups(thread_group_count, 1, 1);
         }
     
-        // Submit the commands
         context.queue().submit(Some(encoder.finish()));
     }
-    
     
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
