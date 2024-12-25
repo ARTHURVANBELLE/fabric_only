@@ -373,15 +373,6 @@ impl App for InstanceApp {
         let thread_group_size = 256u32;
         let thread_group_count = (total_vertices + thread_group_size - 1) / thread_group_size;
         
-        println!("Total vertices: {}", total_vertices);
-        println!("Thread group size: {}", thread_group_size);
-        println!("Thread group count: {}", thread_group_count);
-        println!("Vertex size: {}", std::mem::size_of::<Vertex>());
-        println!("Position offset: {}",std:: mem::offset_of!(Vertex, position));
-        println!("Color offset: {}", std:: mem::offset_of!(Vertex, color));
-        println!("Mass offset: {}", std:: mem::offset_of!(Vertex, mass));
-        println!("Velocity offset: {}", std:: mem::offset_of!(Vertex, velocity));
-        println!("Fixed offset: {}", std:: mem::offset_of!(Vertex, fixed));
     
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

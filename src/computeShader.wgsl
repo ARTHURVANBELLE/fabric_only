@@ -15,6 +15,9 @@ struct SimParams {
     sphere_radius: f32,
 }
 
+const Gravity = 0.81;
+const frameTime = 0.016;
+
 @group(0) @binding(0) var<storage, read_write> vertices: array<Vertex>;
 @group(0) @binding(1) var<uniform> params: SimParams;
 
@@ -28,8 +31,15 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Read the original vertex
     var vertex = vertices[index];
     
-    // Only modify the color - leave all other data untouched
-    vertex.color = vec4<f32>(0.0, 0.0, 1.0, 1.0);
+    if (vertex.fixed == 0.0) {
+            vertex.velocity.y -= Gravity * frameTime;
+            vertex.position.y += vertex.velocity.y * frameTime;
+
+            if (vertex.position.y < -2.0) {
+                vertex.position.y = -2.0;
+                vertex.velocity.y = -vertex.velocity.y;
+            }
+        }
     
     // Write back only the modified vertex
     vertices[index] = vertex;
