@@ -114,8 +114,8 @@ impl InstanceApp {
         let fabric_side_length = 4.0;
         let grid_rows: u32 = 2; // 2x2 grid
         let grid_cols: u32 = 2;
-
-/*        let fabric_indices = vec![
+/*
+        let fabric_indices = vec![
             0, 1, 2,  // First triangle
             2, 3, 0,  // Second triangle
         ];
@@ -324,7 +324,7 @@ impl InstanceApp {
         .device()
         .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             module: &compute_shader,
-            entry_point: "main",
+            entry_point: "cs_main",
             layout: Some(&context.device().create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
                 bind_group_layouts: &[&compute_bind_group_layout],
@@ -411,38 +411,32 @@ impl App for InstanceApp {
     fn input(&mut self, input: egui::InputState, context: &Context) {
         self.camera.input(input.clone(), context);
         if input.raw_scroll_delta.y != 0.0 {
-            let new_radius = (self.camera.radius() - input.raw_scroll_delta.y).max(0.1).min(500.0);
+            let new_radius = (self.camera.radius() - input.raw_scroll_delta.y / 10.0).max(3.0).min(500.0);
             self.camera.set_radius(new_radius).update(context);
         }
     }
 
     fn update(&mut self, delta_time: f32, context: &Context) {
-        // Create a command encoder for compute dispatch
         let mut encoder = context.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Compute Encoder"),
         });
-
-        // Begin a compute pass
+    
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Compute Pass"),
                 timestamp_writes: None,
             });
-
-            // Set the compute pipeline
+    
             compute_pass.set_pipeline(&self.compute_pipeline);
-            
-            // Set the bind groups for the compute shader
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            
-            // Dispatch the compute shader
-            let workgroup_count_x = (self.sim_params.grid_cols + 15) / 16;
-            let workgroup_count_y = (self.sim_params.grid_rows + 15) / 16;
-            
-            compute_pass.dispatch_workgroups(workgroup_count_x, workgroup_count_y, 1);
+    
+            let total_threads = self.sim_params.grid_cols * self.sim_params.grid_rows;
+            let workgroup_size = 64;
+            let workgroup_count = (total_threads + workgroup_size - 1) / workgroup_size;
+    
+            compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
         }
-
-        // Copy the computed vertices to the vertex buffer
+    
         encoder.copy_buffer_to_buffer(
             &self.fabric_storage_buffer,
             0,
@@ -450,11 +444,10 @@ impl App for InstanceApp {
             0,
             (self.sim_params.grid_rows * self.sim_params.grid_cols * std::mem::size_of::<Vertex>() as u32) as u64,
         );
-        
-
-        // Submit the compute work
+    
         context.queue().submit(Some(encoder.finish()));
     }
+    
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         // Draw the sphere
