@@ -27,7 +27,7 @@ struct SimParams {
     grid_rows: u32,
     grid_cols: u32,
     spring_stiffness: f32,
-    rest_length: f32,
+    max_length: f32,
     center: [f32; 4],
     radius: f32,       
     _padding: [f32; 3], // 12 bytes padding
@@ -93,8 +93,8 @@ impl InstanceApp {
 
         // Fabric properties
         let fabric_side_length = 4.0;
-        let grid_rows: u32 = 160; 
-        let grid_cols: u32 = 160;
+        let grid_rows: u32 = 1000; 
+        let grid_cols: u32 = 1000;
 
         // Generate fabric vertices
         let fabric_vertices: Vec<Vertex> = (0..grid_rows)
@@ -106,7 +106,7 @@ impl InstanceApp {
 
                     Vertex {
                         position: [x, y, z, 1.0],
-                        color: [0.0, 1.0, 0.0, 1.0], // Green for the fabric
+                        color: [0.26, 0.65, 0.96, 1.0], // Green for the fabric
                         mass: 1.0,
                         padding1: [0.0; 3],
                         velocity: [0.0, 0.0, 0.0, 1.0],
@@ -162,8 +162,8 @@ impl InstanceApp {
         let sim_params = SimParams {
             grid_rows: grid_rows,
             grid_cols: grid_cols,
-            spring_stiffness: 50.0,
-            rest_length: 0.1,
+            spring_stiffness: 0.1,
+            max_length: 0.07,
             center: [0.0, 0.0, 0.0, 1.0],
             radius: ball_radius,
             _padding: [0.0; 3],
