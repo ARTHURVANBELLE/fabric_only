@@ -202,7 +202,6 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (index >= arrayLength(&vertices)) {
         return;
     }
-
     let environment_data = unpack_environment_data(environment_data_packed);
    
     //let gravity = vec3<f32>(0.0, -0.5, 0.0);

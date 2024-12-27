@@ -162,9 +162,9 @@ impl InstanceApp {
         let sim_params = SimParams {
             grid_rows: grid_rows,
             grid_cols: grid_cols,
-            spring_stiffness: 0.1,
-            max_length: 0.07,
-            center: [0.0, 0.0, 0.0, 1.0],
+            spring_stiffness: 50.0,
+            max_length: 0.5,
+            center: [0.0, 0.0, 0.0, 0.0],
             radius: ball_radius,
             _padding: [0.0; 3],
         };

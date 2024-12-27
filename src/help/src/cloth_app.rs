@@ -79,12 +79,12 @@ pub struct EnvironmentData {
 impl EnvironmentData {
     pub fn new(center: cgmath::Vector3<f32>, radius: f32, delta_time: f32) -> Self {
         let sphere_center: cgmath::Vector3<f32> = center.into();
-        let gravity: [f32; 3] = [0.0, -1.0, 0.0];
-        let sphere_damping: f32 = 0.3;
-        let structural_stiffness: f32 = 0.1;
-        let shear_stiffness: f32 = 0.1;
-        let bending_stiffness: f32 = 0.1;
-        let vertex_mass: f32 = 0.5;
+        let gravity: [f32; 3] = [0.0, -4.0, 0.0];
+        let sphere_damping: f32 = 0.1;
+        let structural_stiffness: f32 = 2.5;
+        let shear_stiffness: f32 = 2.5;
+        let bending_stiffness: f32 = 2.5;
+        let vertex_mass: f32 = 1.0;
         let vertex_damping: f32 = 0.6;
         let structural_max_length: f32 = 0.05;
         let shear_max_length: f32 = 0.075;
