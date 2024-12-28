@@ -28,8 +28,9 @@ struct SimParams1 {
     grid_cols: u32,
     center: [f32; 4],
     radius: f32,
-    _paddin1: f32,
+    _padding1: [f32; 4],
     _padding2: [f32; 4],
+    _padding3: u32,
 }
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -38,9 +39,7 @@ struct SimParams2 {
     rest_length: [f32; 4],
     gravity: [f32; 4],
     k_spring: f32,
-    _padding1: f32,
-    _padding2: f32,
-    _padding3: f32,
+    _padding: [f32; 3],
 }
 
 impl Vertex {
@@ -176,17 +175,16 @@ impl InstanceApp {
             grid_cols: grid_cols,
             center: [0.0, 0.0, 0.0, 0.0],
             radius: ball_radius,
-            _paddin1: 0.0,
+            _padding1: [0.0; 4],
             _padding2: [0.0; 4],
+            _padding3: 1,
         };
         let sim_params2 = SimParams2 {
             stiffness: [25.0, 15.0, 5.0, 0.0],
             rest_length: [0.06, 0.085, 0.12, 0.0],
             gravity: [0.0, -5.8, 0.0, 0.0],
             k_spring: 0.12,
-            _padding1: 0.0,
-            _padding2: 0.0,
-            _padding3: 0.0,
+            _padding: [0.0; 3]
         };
 
         let sim_params1_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {

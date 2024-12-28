@@ -50,8 +50,8 @@ const SPHEREDAMPING = 0.5;
 
 fn unpack_environment_data(params1: SimParams1, params2: SimParams2) -> EnvironmentData {
     return EnvironmentData(
-        vec4<f32>(0.0, 0.0, 0.0, 0.0), //params1.sphere_center,
-        f32(1.0), //params1.sphere_radius,
+        params1.sphere_center, //params1.sphere_center,
+        f32(1.3), //params1.sphere_radius,
         DELTATIME,
         params2.gravity,
         SPHEREDAMPING,
@@ -69,29 +69,7 @@ fn unpack_environment_data(params1: SimParams1, params2: SimParams2) -> Environm
         params1.grid_cols
     );
 }
-/*
-fn unpack_environment_data2(params: SimParams) -> EnvironmentData {
-    return EnvironmentData(
-        vec4<f32>(0.0, 0.0, 0.0, 0.0),                                  //    sphere_center: vec4<f32>,
-        f32(1.0),                                                       //    sphere_radius: f32,
-        DELTATIME,                                                      //    dt: f32,
-        vec4<f32>(0.0, -9.8, 0.0, 0.0),                                 //    gravity: vec4<f32>,
-        SPHEREDAMPING,                                                  //    sphere_damping: f32,
-        f32(25.0),                                                      //    structural_stiffness: f32,
-        f32(15.0),                                                      //    shear_stiffness: f32,
-        f32(5.0),                                                       //    bending_stiffness: f32,
-        f32(1.2),                                                       //    vertex_damping: f32,
-        f32(0.06),                                                      //    structural_rest_length: f32,
-        f32(0.085),                                                     //    shear_rest_length: f32,
-        f32(0.12),                                                      //    bending_rest_length: f32,
-        params.rest_length.x * params.k_spring,                         //    structural_max_length: f32,
-        params.rest_length.y * params.k_spring,                         //    shear_max_length: f32,
-        params.rest_length.z * params.k_spring,                         //    bending_max_length: f32,
-        params.grid_rows,                                               //    grid_width: u32,
-        params.grid_cols                                                //    grid_height: u32,
-    );
-}
-*/
+
 
 fn resolve_sphere_collision(vertex: Vertex, environment_data: EnvironmentData) -> Vertex {
     // Skip if vertex is fixed
