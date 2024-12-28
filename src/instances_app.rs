@@ -23,14 +23,24 @@ struct Vertex {
 // Simulation parameters
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct SimParams {
+struct SimParams1 {
     grid_rows: u32,
     grid_cols: u32,
-    spring_stiffness: f32,
-    max_length: f32,
     center: [f32; 4],
-    radius: f32,       
-    _padding: [f32; 3], // 12 bytes padding
+    radius: f32,
+    _paddin1: f32,
+    _padding2: [f32; 4],
+}
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct SimParams2 {
+    stiffness: [f32; 4],
+    rest_length: [f32; 4],
+    gravity: [f32; 4],
+    k_spring: f32,
+    _padding1: f32,
+    _padding2: f32,
+    _padding3: f32,
 }
 
 impl Vertex {
@@ -82,10 +92,12 @@ pub struct InstanceApp {
     num_sphere_indices: u32,
     camera: OrbitCamera,
     compute_bind_group: wgpu::BindGroup,
-    sim_param_buffer: wgpu::Buffer,
+    sim_params1_buffer: wgpu::Buffer,
+    sim_params2_buffer: wgpu::Buffer,
     fabric_vertex_buffer: wgpu::Buffer,
     fabric_index_buffer: wgpu::Buffer,
-    sim_params: SimParams,
+    sim_params1: SimParams1,
+    sim_params2: SimParams2,
 }
 
 impl InstanceApp {
@@ -159,18 +171,33 @@ impl InstanceApp {
         let mut indices = Vec::new();
         indices.extend(ball_indices.clone()); // Clone to avoid move
 
-        let sim_params = SimParams {
+        let sim_params1 = SimParams1 {
             grid_rows: grid_rows,
             grid_cols: grid_cols,
-            spring_stiffness: 50.0,
-            max_length: 0.5,
             center: [0.0, 0.0, 0.0, 0.0],
             radius: ball_radius,
-            _padding: [0.0; 3],
+            _paddin1: 0.0,
+            _padding2: [0.0; 4],
         };
-        let sim_param_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Sim Param Buffer"),
-            contents: bytemuck::cast_slice(&[sim_params]),
+        let sim_params2 = SimParams2 {
+            stiffness: [25.0, 15.0, 5.0, 0.0],
+            rest_length: [0.06, 0.085, 0.12, 0.0],
+            gravity: [0.0, -5.8, 0.0, 0.0],
+            k_spring: 0.12,
+            _padding1: 0.0,
+            _padding2: 0.0,
+            _padding3: 0.0,
+        };
+
+        let sim_params1_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sim Param 1 Buffer"),
+            contents: bytemuck::cast_slice(&[sim_params1]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+        let sim_params2_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sim Param 2 Buffer"),
+            contents: bytemuck::cast_slice(&[sim_params2]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
@@ -245,6 +272,16 @@ impl InstanceApp {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -258,7 +295,11 @@ impl InstanceApp {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: sim_param_buffer.as_entire_binding(),
+                    resource: sim_params1_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: sim_params2_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -342,10 +383,12 @@ impl InstanceApp {
             num_sphere_indices,
             camera,
             compute_bind_group,
-            sim_param_buffer,
+            sim_params1_buffer,
+            sim_params2_buffer,
             fabric_vertex_buffer,
             fabric_index_buffer,
-            sim_params,
+            sim_params1,
+            sim_params2,
         }
     }
 }
@@ -364,7 +407,7 @@ impl App for InstanceApp {
             label: Some("Compute Encoder"),
         });
     
-        let total_vertices = self.sim_params.grid_rows * self.sim_params.grid_cols;
+        let total_vertices = self.sim_params1.grid_rows * self.sim_params1.grid_cols;
         let thread_group_size = 256u32;
         let thread_group_count = (total_vertices + thread_group_size - 1) / thread_group_size;
         
@@ -397,7 +440,7 @@ impl App for InstanceApp {
         
         // Calculate total indices for grid
         let indices_per_cell = 6; // 2 triangles * 3 vertices
-        let cells = (self.sim_params.grid_rows - 1) * (self.sim_params.grid_cols - 1);
+        let cells = (self.sim_params1.grid_rows - 1) * (self.sim_params1.grid_cols - 1);
         let total_indices = indices_per_cell * cells;
         
         render_pass.draw_indexed(0..total_indices, 0, 0..1);
