@@ -32,21 +32,26 @@ struct EnvironmentData {
     grid_height: u32,
 };
 
-const STRUCTURAL_REST_LENGTH: f32 = 0.004;  // fabric_side_length / (grid_size - 1)
-const SHEAR_REST_LENGTH: f32 = 0.00566;     // STRUCTURAL_REST_LENGTH * sqrt(2)
-const BENDING_REST_LENGTH: f32 = 0.008;     // STRUCTURAL_REST_LENGTH * 2
+// Recalculated rest lengths for 6.0 side length and 100x100 grid
+const STRUCTURAL_REST_LENGTH: f32 = 0.06;  // 6.0 / (100 - 1)
+const SHEAR_REST_LENGTH: f32 = 0.085;      // STRUCTURAL_REST_LENGTH * sqrt(2)
+const BENDING_REST_LENGTH: f32 = 0.12;     // STRUCTURAL_REST_LENGTH * 2
 
-const DELTATIME = 0.016;
-const GRAVITY = vec4<f32>(0.0, -0.5, 0.0, 0.0);
+// Adjusted constants for stability
+const DELTATIME = 0.006;
+const GRAVITY = vec4<f32>(0.0, -5.5, 0.0, 0.0);
 const SPHEREDAMPING = 0.5;
-const VERTEXDAMPING = 0.6;
-const STRUCTURALMAX = STRUCTURAL_REST_LENGTH * 1.5;
-const SHEARMAX      = SHEAR_REST_LENGTH * 1.5;
-const BENDINGMAX    = BENDING_REST_LENGTH * 1.5;
+const VERTEXDAMPING = 0.8;  // Increased damping for stability
 
-const STRUCT_STIFF = 50.0;
-const SHEAR_STIFF = 25.0;
-const BEND_STIFF = 10.0;
+// Maximum stretch factors (more generous to prevent hard constraints)
+const STRUCTURALMAX = STRUCTURAL_REST_LENGTH * 1.2;
+const SHEARMAX = SHEAR_REST_LENGTH * 1.2;
+const BENDINGMAX = BENDING_REST_LENGTH * 1.2;
+
+// Reduced stiffness values for more stable behavior
+const STRUCT_STIFF = 25.0;
+const SHEAR_STIFF = 15.0;
+const BEND_STIFF = 5.0;
 
 
 @group(0) @binding(0) var<storage, read_write> vertices: array<Vertex>;
@@ -73,50 +78,69 @@ fn unpack_environment_data(params: SimParams) -> EnvironmentData {
 
 
 fn resolve_sphere_collision(vertex: Vertex, environment_data: EnvironmentData) -> Vertex {
-    let to_center = vertex.position - environment_data.sphere_center;
-    let dist = length(to_center);
-    
     // Skip if vertex is fixed
     if (vertex.fixed > 0.5) {
         return vertex;
     }
-    
-    if (dist < environment_data.sphere_radius + 0.1) {
+
+    let to_center = vertex.position - environment_data.sphere_center;
+    let pos_3 = vertex.position.xyz;
+    let center_3 = environment_data.sphere_center.xyz;
+    let to_center_3 = pos_3 - center_3;
+    let dist = length(to_center_3);
+
+    if (dist <= environment_data.sphere_radius + 0.2){ //&& vertex.position.y > 0.0) {
+        let new_velocity = vec4<f32>(0.0,0.0,0.0,0.0);
+        let color = vec4<f32>(0.5, 0.5, 0.5, 1.0);
+        let fixed = f32(1.0);
+        
+        return Vertex(
+            vertex.position,
+            color,
+            vertex.mass,
+            new_velocity,
+            fixed
+        );
+    }
+/*
+    // If inside or touching sphere
+    if (dist <= environment_data.sphere_radius) {
         let normal = normalize(to_center);
         
-        // Stronger position correction with proper scaling
-        let penetration = environment_data.sphere_radius + 0.1 - dist;
-        let corrected_pos = vertex.position + normal * penetration;
+        // Push vertex exactly to surface
+        let corrected_pos = environment_data.sphere_center + normal * environment_data.sphere_radius;
         
-        // Project velocity onto tangent plane of sphere
-        let velocity_normal = dot(vertex.velocity, normal) * normal;
-        let velocity_tangent = vertex.velocity - velocity_normal;
+        // Stop all velocity
+        let new_velocity = vec4<f32>(0.0);
+        let color = vec4<f32>(0.0, 1.0, 0.0, 1.0);
         
-        // Apply friction to tangential velocity
-        let friction = 0.3; // Adjust as needed
-        let new_velocity = velocity_tangent * (1.0 - friction);
+        return Vertex(
+            corrected_pos,
+            color,
+            vertex.mass,
+            new_velocity,
+            vertex.fixed
+        );
+    }
+*/
+    if (vertex.position.y < -3.0) {
+        let new_velocity = vec4<f32>(0.0,0.0,0.0,0.0);
+        let color = vec4<f32>(0.0, 0.5, 0.5, 1.0);
         
-        // If moving into sphere, bounce
-        if (dot(vertex.velocity, normal) < 0.0) {
-            let bounce_factor = 0.5; // Adjust for bounciness
-            let reflected_velocity = -velocity_normal * bounce_factor;
-            return Vertex(
-                corrected_pos,
-                vertex.color,
-                vertex.mass,
-                new_velocity + reflected_velocity,
-                vertex.fixed
-            );
-        }
-        
-        return Vertex(corrected_pos, vertex.color, vertex.mass, new_velocity, vertex.fixed);
+        return Vertex(
+            vertex.position,
+            color,
+            vertex.mass,
+            new_velocity,
+            vertex.fixed
+        );
     }
     
     return vertex;
 }
 
 fn get_spring_force(vertex: Vertex, neighbor: Vertex, stiffness: f32, rest_length: f32) -> vec4<f32> {
-    let delta = neighbor.position - vertex.position;  // Changed direction
+    let delta = neighbor.position - vertex.position;
     let current_length = length(delta);
     
     if (current_length == 0.0) {
@@ -124,9 +148,25 @@ fn get_spring_force(vertex: Vertex, neighbor: Vertex, stiffness: f32, rest_lengt
     }
     
     let direction = delta / current_length;
-    // Force is proportional to displacement from rest length
-    let displacement = current_length - rest_length;
-    let force = direction * displacement * stiffness;
+    
+    // Add non-linear spring behavior to prevent excessive stretching
+    var displacement = current_length - rest_length;
+    let stretch_factor = current_length / rest_length;
+    
+    // Progressive stiffness increase when stretched
+    var effective_stiffness = stiffness;
+    if (stretch_factor > 1.1) {
+        effective_stiffness *= stretch_factor * stretch_factor;
+    }
+    
+    let force = direction * displacement * effective_stiffness;
+    
+    // Limit maximum force magnitude for stability
+    let max_force = 100.0;
+    let force_magnitude = length(force);
+    if (force_magnitude > max_force) {
+        return force * (max_force / force_magnitude);
+    }
     
     return force;
 }
@@ -240,8 +280,26 @@ fn resolve_spring_behavior(index: u32, vertex: Vertex, environment_data: Environ
     let new_velocity = vertex.velocity + acceleration * clamped_dt;
     let new_position = vertex.position + new_velocity * clamped_dt;
     
-    return Vertex(new_position, vertex.color, vertex.mass, new_velocity, vertex.fixed);
+    // Add position-based relaxation
+    let final_position = vertex.position + new_velocity * clamped_dt;
+    let max_movement = STRUCTURAL_REST_LENGTH * 0.5;
+    let movement = final_position - vertex.position;
+    let movement_length = length(movement);
+    
+    if (movement_length > max_movement) {
+        let limited_movement = normalize(movement) * max_movement;
+        return Vertex(
+            vertex.position + limited_movement,
+            vertex.color,
+            vertex.mass,
+            new_velocity * 0.9, // Reduce velocity when limiting movement
+            vertex.fixed
+        );
+    }
+    
+    return Vertex(final_position, vertex.color, vertex.mass, new_velocity, vertex.fixed);
 }
+
 
 @compute @workgroup_size(256)
 fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -267,9 +325,3 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Store back
     vertices[index] = vertex;
 }
-
-
-
-
-
-

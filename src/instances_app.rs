@@ -92,9 +92,9 @@ impl InstanceApp {
     pub fn new(context: &Context) -> Self {
 
         // Fabric properties
-        let fabric_side_length = 4.0;
-        let grid_rows: u32 = 1000; 
-        let grid_cols: u32 = 1000;
+        let fabric_side_length = 6.0;
+        let grid_rows: u32 = 100; 
+        let grid_cols: u32 = 100;
 
         // Generate fabric vertices
         let fabric_vertices: Vec<Vertex> = (0..grid_rows)
@@ -107,7 +107,7 @@ impl InstanceApp {
                     Vertex {
                         position: [x, y, z, 1.0],
                         color: [0.26, 0.65, 0.96, 1.0], // Green for the fabric
-                        mass: 1.0,
+                        mass: 0.1,
                         padding1: [0.0; 3],
                         velocity: [0.0, 0.0, 0.0, 1.0],
                         fixed: 0.0,
@@ -137,8 +137,8 @@ impl InstanceApp {
         println!("Fabric vertices: {}", fabric_vertices.len());
         println!("Fabric indices: {}", fabric_indices.len());
 
-        let ball_radius = 1.2; // Adjust the ball radius as needed
-        let (ball_positions, ball_indices) = icosphere(2);
+        let ball_radius = 1.0; // Adjust the ball radius as needed
+        let (ball_positions, ball_indices) = icosphere(5);
         let ball_vertices: Vec<Vertex> = ball_positions
             .iter()
             .map(|position| Vertex {
