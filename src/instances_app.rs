@@ -21,25 +21,19 @@ struct Vertex {
 }
 
 // Simulation parameters
-#[repr(C)]
+#[repr(C, align(16))]  // Added align(16) to force 16-byte alignment
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct SimParams1 {
-    grid_rows: u32,
-    grid_cols: u32,
-    center: [f32; 4],
-    radius: f32,
-    _padding1: [f32; 4],
-    _padding2: [f32; 4],
-    _padding3: u32,
+    grid_k_radius: [f32; 4],  // grid_rows, grid_cols, k_spring and sphere_radius 16 bytes
+    sphere_center: [f32; 4],  // 16 bytes
 }
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C, align(16))]  // Added align(16) to force 16-byte alignment
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct SimParams2 {
-    stiffness: [f32; 4],
-    rest_length: [f32; 4],
-    gravity: [f32; 4],
-    k_spring: f32,
-    _padding: [f32; 3],
+    stiffness: [f32; 4],    // 16 bytes, aligned to 16
+    rest_length: [f32; 4],  // 16 bytes, aligned to 16
+    gravity: [f32; 4],      // 16 bytes, aligned to 16
+    _padding: [f32; 4]      // 16-byte alignment
 }
 
 impl Vertex {
@@ -83,6 +77,7 @@ impl Vertex {
     }
 }
 
+
 pub struct InstanceApp {
     sphere_vertex_buffer: wgpu::Buffer,
     sphere_index_buffer: wgpu::Buffer,
@@ -104,8 +99,10 @@ impl InstanceApp {
 
         // Fabric properties
         let fabric_side_length = 6.0;
-        let grid_rows: u32 = 100; 
+        let grid_rows: u32 = 100;
         let grid_cols: u32 = 100;
+        let k_spring = 0.12;
+        let ball_radius = 1.0;
 
         // Generate fabric vertices
         let fabric_vertices: Vec<Vertex> = (0..grid_rows)
@@ -148,7 +145,6 @@ impl InstanceApp {
         println!("Fabric vertices: {}", fabric_vertices.len());
         println!("Fabric indices: {}", fabric_indices.len());
 
-        let ball_radius = 1.0; // Adjust the ball radius as needed
         let (ball_positions, ball_indices) = icosphere(5);
         let ball_vertices: Vec<Vertex> = ball_positions
             .iter()
@@ -171,21 +167,18 @@ impl InstanceApp {
         indices.extend(ball_indices.clone()); // Clone to avoid move
 
         let sim_params1 = SimParams1 {
-            grid_rows: grid_rows,
-            grid_cols: grid_cols,
-            center: [0.0, 0.0, 0.0, 0.0],
-            radius: ball_radius,
-            _padding1: [0.0; 4],
-            _padding2: [0.0; 4],
-            _padding3: 1,
+            grid_k_radius: [grid_rows as f32, grid_cols as f32, k_spring, 1.4],
+            sphere_center: [0.0, 0.0, 0.0, 0.0],
         };
         let sim_params2 = SimParams2 {
             stiffness: [25.0, 15.0, 5.0, 0.0],
             rest_length: [0.06, 0.085, 0.12, 0.0],
-            gravity: [0.0, -5.8, 0.0, 0.0],
-            k_spring: 0.12,
-            _padding: [0.0; 3]
+            gravity: [0.0, -6.8, 0.0, 0.0],
+            _padding: [0.0; 4]
         };
+
+        println!("SimParams1 -- Size: {}, Alignment: {}", std::mem::size_of::<SimParams1>(), std::mem::align_of::<SimParams1>());
+        println!("SimParams2 -- Size: {}, Alignment: {}", std::mem::size_of::<SimParams2>(), std::mem::align_of::<SimParams2>());
 
         let sim_params1_buffer = context.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Sim Param 1 Buffer"),
@@ -405,7 +398,7 @@ impl App for InstanceApp {
             label: Some("Compute Encoder"),
         });
     
-        let total_vertices = self.sim_params1.grid_rows * self.sim_params1.grid_cols;
+        let total_vertices = self.sim_params1.grid_k_radius[0] as u32 * self.sim_params1.grid_k_radius[1] as u32;
         let thread_group_size = 256u32;
         let thread_group_count = (total_vertices + thread_group_size - 1) / thread_group_size;
         
@@ -438,7 +431,7 @@ impl App for InstanceApp {
         
         // Calculate total indices for grid
         let indices_per_cell = 6; // 2 triangles * 3 vertices
-        let cells = (self.sim_params1.grid_rows - 1) * (self.sim_params1.grid_cols - 1);
+        let cells = (self.sim_params1.grid_k_radius[0] as u32 - 1) * (self.sim_params1.grid_k_radius[1] as u32- 1);
         let total_indices = indices_per_cell * cells;
         
         render_pass.draw_indexed(0..total_indices, 0, 0..1);

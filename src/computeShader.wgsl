@@ -7,17 +7,15 @@ struct Vertex {
 }
 
 struct SimParams1 {
-    grid_rows: u32,
-    grid_cols: u32,
-    sphere_center: vec4<f32>,
-    sphere_radius: f32,
+    @align(16) grid_k_radius: vec4<f32>,
+    @align(16) sphere_center: vec4<f32>,
 }
 
 struct SimParams2 {
-    stiffness: vec4<f32>,
-    rest_length: vec4<f32>,
-    gravity: vec4<f32>,
-    k_spring: f32,
+    @align(16) stiffness: vec4<f32>,
+    @align(16) rest_length: vec4<f32>,
+    @align(16) gravity: vec4<f32>,
+    @align(16) _padding: vec4<f32>,
 }
 
 struct EnvironmentData {
@@ -51,22 +49,22 @@ const SPHEREDAMPING = 0.5;
 fn unpack_environment_data(params1: SimParams1, params2: SimParams2) -> EnvironmentData {
     return EnvironmentData(
         params1.sphere_center, //params1.sphere_center,
-        f32(1.3), //params1.sphere_radius,
+        params1.grid_k_radius.w,//params1.grid_k_radius.w, //sphere_radius
         DELTATIME,
         params2.gravity,
         SPHEREDAMPING,
         params2.stiffness.x,
         params2.stiffness.y,
         params2.stiffness.z,
-        params2.k_spring,
+        params1.grid_k_radius.z, //vertex_damping
         params2.rest_length.x,
         params2.rest_length.y,
         params2.rest_length.z,
-        params2.rest_length.x * params2.k_spring,
-        params2.rest_length.y * params2.k_spring,
-        params2.rest_length.z * params2.k_spring,
-        params1.grid_rows,
-        params1.grid_cols
+        params2.rest_length.x * params1.grid_k_radius.z,
+        params2.rest_length.y * params1.grid_k_radius.z,
+        params2.rest_length.z * params1.grid_k_radius.z,
+        u32(params1.grid_k_radius.x), //grid_width
+        u32(params1.grid_k_radius.y), //grid_height
     );
 }
 
