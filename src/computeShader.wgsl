@@ -18,7 +18,7 @@ struct SimParams2 {
     @align(16) _padding: vec4<f32>,
 }
 
-struct EnvironmentData {
+struct Parameters {
     sphere_center: vec4<f32>,
     sphere_radius: f32,
     dt: f32,
@@ -39,17 +39,17 @@ struct EnvironmentData {
 };
 
 // Adjusted constants for stability
-const DELTATIME = 0.006;
+const DELTATIME = 0.0016;
 const SPHEREDAMPING = 0.5;
 
 @group(0) @binding(0) var<storage, read_write> vertices: array<Vertex>;
 @group(0) @binding(1) var<uniform> params1: SimParams1;
 @group(0) @binding(2) var<uniform> params2: SimParams2;
 
-fn unpack_environment_data(params1: SimParams1, params2: SimParams2) -> EnvironmentData {
-    return EnvironmentData(
-        params1.sphere_center, //params1.sphere_center,
-        params1.grid_k_radius.w,//params1.grid_k_radius.w, //sphere_radius
+fn unpack_parameters(params1: SimParams1, params2: SimParams2) -> Parameters {
+    return Parameters(
+        params1.sphere_center,   //sphere_center,
+        params1.grid_k_radius.w, //sphere_radius
         DELTATIME,
         params2.gravity,
         SPHEREDAMPING,
@@ -69,28 +69,40 @@ fn unpack_environment_data(params1: SimParams1, params2: SimParams2) -> Environm
 }
 
 
-fn resolve_sphere_collision(vertex: Vertex, environment_data: EnvironmentData) -> Vertex {
-    // Skip if vertex is fixed
+fn resolve_sphere_collision(vertex: Vertex, parameters: Parameters) -> Vertex {
     if (vertex.fixed > 0.5) {
         return vertex;
     }
 
-    let to_center = vertex.position - environment_data.sphere_center;
     let pos_3 = vertex.position.xyz;
-    let center_3 = environment_data.sphere_center.xyz;
-    let to_center_3 = pos_3 - center_3;
-    let dist = length(to_center_3);
+    let center_3 = parameters.sphere_center.xyz;
+    let CS = pos_3 - center_3;
+    let dist = length(CS);
 
-    if (dist <= environment_data.sphere_radius + 0.2){
-        let new_velocity = vec4<f32>(0.0,0.0,0.0,0.0);
-        let fixed = f32(1.0);
+    // Expand collision detection range slightly
+    if (dist < parameters.sphere_radius + 0.1) {
+        let dir = CS / dist;
+        
+        // Ensure minimum distance from sphere
+        let min_offset = max(0.05, dist - parameters.sphere_radius);
+        let new_pos = center_3 + dir * (parameters.sphere_radius + min_offset);
+        
+        let normal_vel = dot(vertex.velocity.xyz, dir) * dir;
+        let tangent_vel = vertex.velocity.xyz - normal_vel;
+        
+        // Reduce tangential velocity more aggressively
+        let friction = 1.0;
+        // Add velocity clamping
+        let max_speed = 5.0;
+        let raw_velocity = (tangent_vel * friction) - (normal_vel * 0.7);
+        let new_velocity = normalize(raw_velocity) * min(length(raw_velocity), max_speed);
         
         return Vertex(
-            vertex.position,
+            vec4<f32>(new_pos, vertex.position.w),
             vertex.color,
             vertex.mass,
-            new_velocity,
-            fixed
+            vec4<f32>(new_velocity, 0.0),
+            vertex.fixed
         );
     }
     return vertex;
@@ -128,7 +140,7 @@ fn get_spring_force(vertex: Vertex, neighbor: Vertex, stiffness: f32, rest_lengt
     return force;
 }
 
-fn resolve_spring_behavior(index: u32, vertex: Vertex, environment_data: EnvironmentData, clamped_dt: f32) -> Vertex {
+fn resolve_spring_behavior(index: u32, vertex: Vertex, parameters: Parameters) -> Vertex {
     // Skip if vertex is fixed
     if (vertex.fixed > 0.5) {
         return vertex;
@@ -137,109 +149,109 @@ fn resolve_spring_behavior(index: u32, vertex: Vertex, environment_data: Environ
     var force = vec4<f32>(0.0);
     
     // Get current position in grid
-    let row = index / environment_data.grid_width;
-    let col = index % environment_data.grid_width;
+    let row = index / parameters.grid_width;
+    let col = index % parameters.grid_width;
     
     // Calculate neighbor existence flags
     let has_left = col > 0u;
-    let has_right = col < environment_data.grid_width - 1u;
+    let has_right = col < parameters.grid_width - 1u;
     let has_top = row > 0u;
-    let has_bottom = row < environment_data.grid_height - 1u;
+    let has_bottom = row < parameters.grid_height - 1u;
     
     let has_two_left = col >= 2u;
-    let has_two_right = col < environment_data.grid_width - 2u;
+    let has_two_right = col < parameters.grid_width - 2u;
     let has_two_top = row >= 2u;
-    let has_two_bottom = row < environment_data.grid_height - 2u;
+    let has_two_bottom = row < parameters.grid_height - 2u;
 
     // Structural springs (direct neighbors)
     if (has_left) {
         let left_index = index - 1u;
         force += get_spring_force(vertex, vertices[left_index], 
-            environment_data.structural_stiffness, environment_data.structural_rest_length);
+            parameters.structural_stiffness, parameters.structural_rest_length);
     }
 
     if (has_right) {
         let right_index = index + 1u;
         force += get_spring_force(vertex, vertices[right_index], 
-            environment_data.structural_stiffness, environment_data.structural_rest_length);
+            parameters.structural_stiffness, parameters.structural_rest_length);
     }
 
     if (has_top) {
-        let top_index = index - environment_data.grid_width;
+        let top_index = index - parameters.grid_width;
         force += get_spring_force(vertex, vertices[top_index], 
-            environment_data.structural_stiffness, environment_data.structural_rest_length);
+            parameters.structural_stiffness, parameters.structural_rest_length);
     }
 
     if (has_bottom) {
-        let bottom_index = index + environment_data.grid_width;
+        let bottom_index = index + parameters.grid_width;
         force += get_spring_force(vertex, vertices[bottom_index], 
-            environment_data.structural_stiffness, environment_data.structural_rest_length);
+            parameters.structural_stiffness, parameters.structural_rest_length);
     }
 
     // Shear springs (diagonal neighbors)
     if (has_top && has_left) {
-        let top_left_index = index - environment_data.grid_width - 1u;
+        let top_left_index = index - parameters.grid_width - 1u;
         force += get_spring_force(vertex, vertices[top_left_index], 
-            environment_data.shear_stiffness, environment_data.shear_rest_length);
+            parameters.shear_stiffness, parameters.shear_rest_length);
     }
 
     if (has_top && has_right) {
-        let top_right_index = index - environment_data.grid_width + 1u;
+        let top_right_index = index - parameters.grid_width + 1u;
         force += get_spring_force(vertex, vertices[top_right_index], 
-            environment_data.shear_stiffness, environment_data.shear_rest_length);
+            parameters.shear_stiffness, parameters.shear_rest_length);
     }
 
     if (has_bottom && has_left) {
-        let bottom_left_index = index + environment_data.grid_width - 1u;
+        let bottom_left_index = index + parameters.grid_width - 1u;
         force += get_spring_force(vertex, vertices[bottom_left_index], 
-            environment_data.shear_stiffness, environment_data.shear_rest_length);
+            parameters.shear_stiffness, parameters.shear_rest_length);
     }
 
     if (has_bottom && has_right) {
-        let bottom_right_index = index + environment_data.grid_width + 1u;
+        let bottom_right_index = index + parameters.grid_width + 1u;
         force += get_spring_force(vertex, vertices[bottom_right_index], 
-            environment_data.shear_stiffness, environment_data.shear_rest_length);
+            parameters.shear_stiffness, parameters.shear_rest_length);
     }
 
     // Bending springs (two vertices away)
     if (has_two_left) {
         let two_left_index = index - 2u;
         force += get_spring_force(vertex, vertices[two_left_index], 
-            environment_data.bending_stiffness, environment_data.bending_rest_length);
+            parameters.bending_stiffness, parameters.bending_rest_length);
     }
 
     if (has_two_right) {
         let two_right_index = index + 2u;
         force += get_spring_force(vertex, vertices[two_right_index], 
-            environment_data.bending_stiffness, environment_data.bending_rest_length);
+            parameters.bending_stiffness, parameters.bending_rest_length);
     }
 
     if (has_two_top) {
-        let two_top_index = index - 2u * environment_data.grid_width;
+        let two_top_index = index - 2u * parameters.grid_width;
         force += get_spring_force(vertex, vertices[two_top_index], 
-            environment_data.bending_stiffness, environment_data.bending_rest_length);
+            parameters.bending_stiffness, parameters.bending_rest_length);
     }
 
     if (has_two_bottom) {
-        let two_bottom_index = index + 2u * environment_data.grid_width;
+        let two_bottom_index = index + 2u * parameters.grid_width;
         force += get_spring_force(vertex, vertices[two_bottom_index], 
-            environment_data.bending_stiffness, environment_data.bending_rest_length);
+            parameters.bending_stiffness, parameters.bending_rest_length);
     }
 
     // Apply gravity
-    force += environment_data.gravity * vertex.mass;
+    force += parameters.gravity * vertex.mass;
     
     // Apply damping proportional to velocity
-    force += -environment_data.vertex_damping * vertex.velocity;
+    force += -parameters.vertex_damping * vertex.velocity;
     
     // Semi-implicit Euler integration
     let acceleration = force / vertex.mass;
-    let new_velocity = vertex.velocity + acceleration * clamped_dt;
-    let new_position = vertex.position + new_velocity * clamped_dt;
+    let new_velocity = vertex.velocity + acceleration * parameters.dt;
+    let new_position = vertex.position + new_velocity * parameters.dt;
     
     // Add position-based relaxation
-    let final_position = vertex.position + new_velocity * clamped_dt;
-    let max_movement = environment_data.structural_rest_length * 0.5;
+    let final_position = vertex.position + new_velocity * parameters.dt;
+    let max_movement = parameters.structural_rest_length * 0.5;
     let movement = final_position - vertex.position;
     let movement_length = length(movement);
     
@@ -249,7 +261,7 @@ fn resolve_spring_behavior(index: u32, vertex: Vertex, environment_data: Environ
             vertex.position + limited_movement,
             vertex.color,
             vertex.mass,
-            new_velocity * 0.9, // Reduce velocity when limiting movement
+            new_velocity * 0.9, // Reduce velocity
             vertex.fixed
         );
     }
@@ -264,21 +276,13 @@ fn cs_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (index >= arrayLength(&vertices)) {
         return;
     }
-    let environment_data = unpack_environment_data(params1, params2);
-
-    // Clamp the delta_time to be sure of the stability of the simulation
-    let clamped_dt = clamp(environment_data.dt, 0.016, 0.033);
-
-    // Fetch current vertex data
     var vertex = vertices[index];
 
-    // Check sphere collision after spring forces and correct if needed
-    vertex = resolve_sphere_collision(vertex, environment_data);
+    let parameters = unpack_parameters(params1, params2);
 
-    vertex = resolve_spring_behavior(index, vertex, environment_data, clamped_dt);
+    vertex = resolve_spring_behavior(index, vertex, parameters);
 
-    vertex = resolve_sphere_collision(vertex, environment_data);
+    vertex = resolve_sphere_collision(vertex, parameters);
 
-    // Store back
     vertices[index] = vertex;
 }

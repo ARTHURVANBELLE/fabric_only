@@ -161,10 +161,10 @@ impl InstanceApp {
 
         // Combine vertices and indices for rendering
         let mut vertices: Vec<Vertex> = Vec::new();
-        vertices.extend(&ball_vertices); // Borrow instead of moving
+        vertices.extend(&ball_vertices);
 
         let mut indices = Vec::new();
-        indices.extend(ball_indices.clone()); // Clone to avoid move
+        indices.extend(ball_indices.clone());
 
         let sim_params1 = SimParams1 {
             grid_k_radius: [grid_rows as f32, grid_cols as f32, k_spring, 1.4],
